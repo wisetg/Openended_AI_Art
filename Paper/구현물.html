@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>집단 무의식 캔버스</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; user-select: none; }
+
+#c { display: block; position: fixed; top: 0; left: 0; }
+
+/* 시작 화면 UI */
+#start-overlay {
+  position: fixed; top: 0; left: 0; width: calc(100% - 210px); height: 100vh;
+  background: rgba(0, 0, 0, 0.95); z-index: 20; 
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  transition: opacity 1s ease-out;
+}
+.start-title {
+  color: #fff; font-size: 16px; letter-spacing: 8px; margin-bottom: 10px; font-weight: normal;
+}
+.start-sub {
+  color: #666; font-size: 10px; letter-spacing: 4px; margin-bottom: 50px;
+}
+.shape-btns { display: flex; gap: 40px; }
+.s-btn {
+  background: transparent; border: 1px solid #444; color: #fff;
+  font-size: 32px; width: 90px; height: 90px; cursor: pointer;
+  border-radius: 16px; transition: all 0.3s;
+  display: flex; align-items: center; justify-content: center;
+}
+.s-btn:hover {
+  border-color: #fff; transform: scale(1.1); box-shadow: 0 0 25px rgba(255,255,255,0.15);
+}
+
+#panel {
+  position: fixed; top: 0; right: 0; width: 210px; height: 100vh;
+  background: rgba(0,0,0,0.85); border-left: 1px solid rgba(255,255,255,0.08);
+  padding: 14px 12px; overflow-y: auto; color: #ccc; font-size: 11px; z-index: 9;
+}
+
+h2 { font-size: 12px; color: #fff; letter-spacing: 2px; margin-bottom: 2px; }
+.sub { font-size: 8px; color: #555; letter-spacing: 2px; margin-bottom: 14px; }
+.sec { font-size: 8px; color: #444; letter-spacing: 3px; text-transform: uppercase;
+       border-bottom: 1px solid #1a1a1a; padding-bottom: 3px; margin: 12px 0 7px; }
+
+.prow { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+.dot  { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.pinfo { flex: 1; }
+.pname { font-size: 9px; color: #555; margin-bottom: 1px; }
+.bar-bg { height: 2px; background: #111; border-radius: 1px; overflow: hidden; }
+.bar    { height: 100%; border-radius: 1px; transition: width .4s, background .4s; }
+
+.mrow { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+.mlabel { width: 42px; font-size: 9px; color: #555; }
+.mbg { flex: 1; height: 4px; background: #111; border-radius: 2px; overflow: hidden; }
+.mfill { height: 100%; border-radius: 2px; transition: width .3s, background .5s; }
+.mval { width: 30px; text-align: right; font-size: 9px; color: #444; }
+
+.grow { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 9px; }
+.gk { color: #555; } .gv { color: #ddd; font-weight: bold; }
+
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 6px; }
+.btn {
+  padding: 6px 2px; border: 1px solid #222; background: transparent;
+  color: #666; font-family: 'Courier New', monospace; font-size: 9px;
+  cursor: pointer; border-radius: 2px; letter-spacing: 0.5px; transition: all .15s;
+}
+.btn:hover { border-color: #555; color: #ccc; background: rgba(255,255,255,0.05); }
+.btn.on   { border-color: #888; color: #fff; background: rgba(255,255,255,0.09); }
+
+#res-overlay {
+  position: fixed; top: 50%; left: calc((100vw - 210px)/2); transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none; z-index: 8; opacity: 0; transition: opacity .8s;
+}
+#res-overlay .rt { font-size: 13px; letter-spacing: 6px; color: rgba(255,255,255,.85); }
+#res-overlay .rs { font-size: 8px; letter-spacing: 4px; color: rgba(255,255,255,.35); margin-top:4px; }
+
+#foot { position: fixed; bottom: 16px; left: 16px; font-size: 9px;
+        letter-spacing: 3px; color: #333; pointer-events: none; z-index: 8; }
+</style>
+</head>
+<body>
+
+<div id="start-overlay">
+  <div class="start-title">무의식의 형태를 선택하세요</div>
+  <div class="start-sub">SELECT THE SHAPE OF GENESIS</div>
+  <div class="shape-btns">
+    <button class="s-btn" onclick="startSim(0)">◯</button>
+    <button class="s-btn" onclick="startSim(1)">△</button>
+    <button class="s-btn" onclick="startSim(2)">◻</button>
+  </div>
+</div>
+
+<canvas id="c"></canvas>
+
+<div id="panel">
+  <h2>집단무의식캔버스</h2>
+  <div class="sub">COLLECTIVE UNCONSCIOUS</div>
+
+  <div class="sec">참여자 뇌파</div>
+  <div id="plist"></div>
+
+  <div class="sec">집단 상태</div>
+  <div class="mrow">
+    <div class="mlabel">각성도</div>
+    <div class="mbg"><div class="mfill" id="bar-ar" style="width:50%"></div></div>
+    <div class="mval" id="val-ar">0.50</div>
+  </div>
+  <div class="mrow">
+    <div class="mlabel">긍부정</div>
+    <div class="mbg"><div class="mfill" id="bar-va" style="width:50%"></div></div>
+    <div class="mval" id="val-va">0.00</div>
+  </div>
+  <div class="mrow">
+    <div class="mlabel">동기성</div>
+    <div class="mbg"><div class="mfill" id="bar-sy" style="width:50%"></div></div>
+    <div class="mval" id="val-sy">0.50</div>
+  </div>
+
+  <div class="sec">유전 알고리즘</div>
+  <div class="grow"><span class="gk">세대</span><span class="gv" id="g-gen">0</span></div>
+  <div class="grow"><span class="gk">적합도</span><span class="gv" id="g-fit">0.000</span></div>
+  <div class="grow"><span class="gk">돌연변이율</span><span class="gv" id="g-mut">0.15</span></div>
+
+  <div class="sec">감정 모드</div>
+  <div class="grid3">
+    <button class="btn on"  id="b-auto"  onclick="snap('auto')">자동</button>
+    <button class="btn"     id="b-med"   onclick="snap('med')">명상</button>
+    <button class="btn"     id="b-anx"   onclick="snap('anx')">불안</button>
+    <button class="btn"     id="b-exc"   onclick="snap('exc')">흥분</button>
+    <button class="btn"     id="b-dep"   onclick="snap('dep')">우울</button>
+    <button class="btn"     id="b-res"   onclick="snap('res')">공명</button>
+  </div>
+</div>
+
+<div id="res-overlay">
+  <div class="rt">공명 결정화</div>
+  <div class="rs">RESONANCE CRYSTALLIZATION</div>
+</div>
+
+<div id="foot">STANDBY</div>
+
+<script>
+// ── 캔버스 ────────────────────────────────
+const c   = document.getElementById('c');
+const ctx = c.getContext('2d');
+const PW  = 210;
+let W, H;
+
+function resize() {
+  W = c.width  = window.innerWidth  - PW;
+  H = c.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── 유틸 ──────────────────────────────────
+const lerp  = (a, b, t) => a + (b - a) * t;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const rnd   = ()  => Math.random();
+const rndS  = ()  => rnd() * 2 - 1;
+
+function snoise(x, y) {
+  return (Math.sin(x * 2.4 + y * 1.3) + Math.sin(x * 1.1 - y * 2.7) * 0.5 + Math.sin(x * 3.7 + y * 0.9) * 0.25) / 1.75;
+}
+
+function eHSL(ar, va) {
+  let h, s, l;
+  if (va >= 0 && ar < 0.5)      { h = 185 - va*40; s = 55+va*30; l = 32+(1-ar)*18; }
+  else if (va >= 0 && ar >= 0.5){ h = 275 - ar*70; s = 72+ar*20; l = 35+va*12; }
+  else if (va < 0 && ar >= 0.5) { h = 10  - ar*8;  s = 80+ar*15; l = 28+ar*14; }
+  else                          { h = 230 + va*15; s = 18+ar*25; l = 16+ar*14; }
+  return { h: h|0, s: s|0, l: l|0 };
+}
+
+// ── 시스템 상태 ───────────────────────────
+let isRunning = false;
+let AR = 0.5, VA = 0, SY = 0.5;
+let mode = 'auto';
+let generation = 0;
+let mutRate = 0.15;
+let bestFit = 0;
+
+// 서사 상태 관리 (기승전결 로직)
+let selectedShape = 0; // 0: 원, 1: 세모, 2: 네모
+let storyPhase = -1;   // -1: 대기, 0: 꿈/카오스, 1: 소멸, 2: 재창조(랜덤단일점) 폭발 및 흐름 시작
+let phaseTimer = 0;
+const PHASE_DURATION_CHAOS = 350; 
+const PHASE_DURATION_FADE = 150;  
+
+// ── 유전자 ────────────────────────────────
+let gene = { freq: 2.5, amp: 1.2, turb: 0.35, spiral: 0.4, hueRange: 80 };
+
+function newGene() { return { freq: 1+rnd()*5, amp: 0.5+rnd()*2, turb: rnd(), spiral: rndS()*2.5, hueRange: 30+rnd()*130 }; }
+function crossover(a, b) { const r = () => rnd() < 0.5; return { freq: r()?a.freq:b.freq, amp: r()?a.amp:b.amp, turb: r()?a.turb:b.turb, spiral: r()?a.spiral:b.spiral, hueRange: r()?a.hueRange:b.hueRange }; }
+function mutate(g, rate) { const m = (v, d, lo, hi) => rnd()<rate ? clamp(v+(rndS())*d,lo,hi) : v; return { freq: m(g.freq, 2, 0.5, 9), amp: m(g.amp, 0.8, 0.1, 4), turb: m(g.turb, 0.3, 0, 1), spiral: m(g.spiral, 0.8, -3, 3), hueRange: m(g.hueRange, 40, 10, 200) }; }
+
+function fitness(g, ar, va, sy) {
+  let tF, tA, tT, tSp;
+  if (va < 0 && ar > 0.5)      { tF=7; tA=3; tT=0.9; tSp=0; }
+  else if (va >= 0 && ar > 0.5){ tF=4.5; tA=2; tT=0.5; tSp=1.8; }
+  else if (va >= 0)            { tF=2; tA=0.9; tT=0.12; tSp=0; }
+  else                         { tF=1; tA=0.3; tT=0.05; tSp=0; }
+  const ff = 1 - Math.abs(g.freq-tF)/9; const fa = 1 - Math.abs(g.amp-tA)/4; const ft = 1 - Math.abs(g.turb-tT); const fs = 1 - Math.abs(g.spiral-tSp)/4;
+  return (ff*0.3 + fa*0.25 + ft*0.3 + fs*0.15) * (0.4 + sy*0.6);
+}
+
+let population = Array.from({length: 24}, newGene);
+function evolveGA() {
+  generation++;
+  const scored = population.map(g => ({ g, f: fitness(g, AR, VA, SY) }));
+  scored.sort((a, b) => b.f - a.f);
+  bestFit = scored[0].f; gene = { ...scored[0].g };
+  mutRate = clamp(0.05 + AR * 0.28 * (1 - VA * 0.4), 0.04, 0.38);
+  const next = scored.slice(0, 5).map(s => s.g);
+  while (next.length < 24) {
+    const a = scored[Math.floor(rnd()*10)].g; const b = scored[Math.floor(rnd()*10)].g;
+    next.push(mutate(crossover(a, b), mutRate));
+  }
+  population = next;
+}
+
+// ── 참여자 ────────────────────────────────
+const NP = 8;
+const participants = Array.from({length: NP}, (_, i) => ({
+  id: i, ar: 0.3 + rnd()*0.4, va: rndS() * 0.8, tar: 0.4, tva: 0,
+  speed: 0.008 + rnd()*0.012, phase: rnd() * Math.PI * 2, timer: 0, interval: 180 + rnd()*300,
+}));
+
+function updateParticipants(t) {
+  participants.forEach(p => {
+    p.timer++;
+    if (p.timer > p.interval && mode === 'auto') { p.timer = 0; p.interval = 180 + rnd()*300; p.tar = 0.15 + rnd()*0.75; p.tva = rndS(); }
+    p.ar = lerp(p.ar, p.tar, p.speed); p.va = lerp(p.va, p.tva, p.speed);
+  });
+}
+
+function computeCollective() {
+  let sumAr = 0, sumVa = 0, totalSync = 0;
+  const n = participants.length; const weights = participants.map(() => 0);
+  for (let i = 0; i < n; i++) for (let j = i+1; j < n; j++) {
+    const s  = Math.exp(-(Math.pow(participants[i].ar - participants[j].ar, 2) + Math.pow(participants[i].va - participants[j].va, 2)) * 4.5);
+    weights[i] += s; weights[j] += s; totalSync += s;
+  }
+  const sumW = weights.reduce((a,b)=>a+b, 0) || 1;
+  participants.forEach((p, i) => { sumAr += p.ar * weights[i] / sumW; sumVa += p.va * weights[i] / sumW; });
+  AR = lerp(AR, sumAr, 0.06); VA = lerp(VA, sumVa, 0.06); SY = lerp(SY, totalSync / (n*(n-1)/2), 0.06);
+}
+
+// ── 파티클 ───────────
+const NP2 = 1800;
+const px = new Float32Array(NP2), py = new Float32Array(NP2), pvx = new Float32Array(NP2), pvy = new Float32Array(NP2);
+const plife = new Float32Array(NP2), pmaxL = new Float32Array(NP2), pspd = new Float32Array(NP2), psz = new Float32Array(NP2);
+const ppx = new Float32Array(NP2), ppy = new Float32Array(NP2);
+
+// 일반 무작위 재생성 (화면 밖으로 나갔을 때)
+function resetParticle(i) {
+  px[i] = rnd() * W; py[i] = rnd() * H; pvx[i] = 0; pvy[i] = 0;
+  pmaxL[i] = 130 + rnd()*160; plife[i] = rnd() * pmaxL[i];
+  pspd[i] = 1.2 + rnd()*2; psz[i] = 0.6 + rnd()*1.3; ppx[i] = px[i]; ppy[i] = py[i];
+}
+
+// 🌟 지정된 임의의 한 점에서 폭발하며 생성
+function resetParticleToPoint(i, targetX, targetY) {
+  px[i] = targetX;
+  py[i] = targetY;
+  const angle = rnd() * Math.PI * 2;
+  const force = 3 + rnd() * 6; // 강한 초기 폭발력
+  pvx[i] = Math.cos(angle) * force;
+  pvy[i] = Math.sin(angle) * force;
+  pmaxL[i] = 130 + rnd() * 160; plife[i] = rnd() * pmaxL[i];
+  pspd[i] = 1.2 + rnd() * 2; psz[i] = 0.6 + rnd() * 1.3;
+  ppx[i] = px[i]; ppy[i] = py[i];
+}
+
+// 🌟 선택된 초기 도형의 형태(윤곽선)에서 폭발하며 생성
+function resetParticleToShape(i, shape) {
+  const cx = W / 2, cy = H / 2;
+  const force = 3 + rnd() * 6; // 초기 폭발 강도
+  const size = 120; // 도형의 기본 크기
+
+  let p_x, p_y, n_x, n_y;
+
+  if (shape === 0) { 
+    // 0: 원
+    const angle = rnd() * Math.PI * 2;
+    p_x = cx + Math.cos(angle) * size;
+    p_y = cy + Math.sin(angle) * size;
+    n_x = Math.cos(angle); n_y = Math.sin(angle);
+  } else if (shape === 1) { 
+    // 1: 세모
+    const side = Math.floor(rnd() * 3);
+    const t = rnd();
+    const vx1 = 0, vy1 = -size;
+    const vx2 = size * Math.cos(Math.PI/6), vy2 = size * Math.sin(Math.PI/6);
+    const vx3 = -size * Math.cos(Math.PI/6), vy3 = size * Math.sin(Math.PI/6);
+
+    if (side === 0) {
+      p_x = cx + lerp(vx1, vx2, t); p_y = cy + lerp(vy1, vy2, t);
+      n_x = Math.cos(-Math.PI/6); n_y = Math.sin(-Math.PI/6);
+    } else if (side === 1) {
+      p_x = cx + lerp(vx2, vx3, t); p_y = cy + lerp(vy2, vy3, t);
+      n_x = 0; n_y = 1;
+    } else {
+      p_x = cx + lerp(vx3, vx1, t); p_y = cy + lerp(vy3, vy1, t);
+      n_x = -Math.cos(-Math.PI/6); n_y = Math.sin(-Math.PI/6);
+    }
+  } else { 
+    // 2: 네모
+    const side = Math.floor(rnd() * 4);
+    const t = rnd() * 2 - 1; 
+    if (side === 0)      { p_x = cx + t*size; p_y = cy - size; n_x = 0; n_y = -1; }
+    else if (side === 1) { p_x = cx + size; p_y = cy + t*size; n_x = 1; n_y = 0; }
+    else if (side === 2) { p_x = cx + t*size; p_y = cy + size; n_x = 0; n_y = 1; }
+    else                 { p_x = cx - size; p_y = cy + t*size; n_x = -1; n_y = 0; }
+  }
+
+  px[i] = p_x; py[i] = p_y;
+  pvx[i] = n_x * force + (rnd() - 0.5) * 3;
+  pvy[i] = n_y * force + (rnd() - 0.5) * 3;
+  
+  pmaxL[i] = 130 + rnd() * 160; plife[i] = rnd() * pmaxL[i];
+  pspd[i] = 1.2 + rnd() * 2; psz[i] = 0.6 + rnd() * 1.3;
+  ppx[i] = px[i]; ppy[i] = py[i];
+}
+
+for (let i = 0; i < NP2; i++) resetParticle(i);
+
+// ── 시작 버튼 클릭 이벤트 ────────────────
+function startSim(shape) {
+  selectedShape = shape;
+  
+  // UI 숨김 및 상태 전환
+  const overlay = document.getElementById('start-overlay');
+  overlay.style.opacity = '0';
+  setTimeout(() => overlay.style.display = 'none', 1000);
+
+  // 모든 파티클을 선택한 도형의 윤곽에 배치하고 폭발시킴
+  for (let i = 0; i < NP2; i++) {
+    resetParticleToShape(i, selectedShape);
+  }
+
+  isRunning = true;
+  storyPhase = 0; 
+  phaseTimer = 0;
+}
+
+function flowAngle(x, y, t) {
+  const nx = x / W * gene.freq; const ny = y / H * gene.freq;
+  const dx = x - W/2, dy = y - H/2; const atoc = Math.atan2(dy, dx);
+  const tt = t * 0.0003;
+  return Math.sin(nx + tt) * Math.cos(ny + tt*0.73) * gene.amp + atoc * gene.spiral * 0.25 + snoise(nx + tt*0.4, ny + tt*0.3) * gene.turb * Math.PI * 1.8;
+}
+
+function updateParticleList(t) {
+  if (!isRunning) return;
+
+  const cx = W / 2, cy = H / 2;
+  const pull = SY > 0.76 ? (SY - 0.76) * 0.14 : 0;
+
+  phaseTimer++;
+
+  // 서사 단계(기승전결) 전환 로직
+  if (storyPhase === 0 && phaseTimer > PHASE_DURATION_CHAOS) {
+    storyPhase = 1; // 1단계: 기억의 소멸
+    phaseTimer = 0;
+  } else if (storyPhase === 1 && phaseTimer > PHASE_DURATION_FADE) {
+    storyPhase = 2; // 2단계: 과거의 기억을 토대로 새로운 창조(랜덤한 단일 점 폭발) 시작
+    
+    // 중앙 근처를 피하지 않으면서 화면 안의 임의의 점 선택
+    const randX = W * 0.1 + rnd() * (W * 0.8);
+    const randY = H * 0.1 + rnd() * (H * 0.8);
+    
+    for (let i = 0; i < NP2; i++) {
+      resetParticleToPoint(i, randX, randY); 
+    }
+  }
+
+  for (let i = 0; i < NP2; i++) {
+    ppx[i] = px[i]; ppy[i] = py[i];
+
+    if (storyPhase === 0) {
+      // 0단계: 꿈/카오스 - 폭발력(관성)에 노이즈를 더해 어지럽게 흩어짐
+      const nx = px[i] * 0.02, ny = py[i] * 0.02;
+      const angle = snoise(nx, ny + t * 0.01) * Math.PI * 4; 
+      pvx[i] += Math.cos(angle) * 0.9; pvy[i] += Math.sin(angle) * 0.9;
+    } else if (storyPhase === 1) {
+      // 1단계: 고요한 소멸 - 급격한 감속 및 페이드아웃
+      pvx[i] *= 0.85; pvy[i] *= 0.85;
+      plife[i] -= 3;  
+    } else {
+      // 2단계 이후: 진화 알고리즘에 따른 유기적 흐름 (승~결)
+      const a = flowAngle(px[i], py[i], t);
+      pvx[i] += Math.cos(a) * pspd[i] * 0.38; pvy[i] += Math.sin(a) * pspd[i] * 0.38;
+      if (pull > 0) { pvx[i] += (cx - px[i]) * pull; pvy[i] += (cy - py[i]) * pull; }
+    }
+
+    pvx[i] *= 0.90; pvy[i] *= 0.90;
+    px[i] += pvx[i]; py[i] += pvy[i];
+    plife[i]--;
+
+    if (plife[i] <= 0 || px[i] < -30 || px[i] > W + 30 || py[i] < -30 || py[i] > H + 30) {
+      if (storyPhase >= 2) resetParticle(i); 
+      else if (storyPhase === 0) resetParticle(i); 
+    }
+  }
+}
+
+// ── 렌더링 ────────────────────────────────
+let resAlpha = 0, resAngle = 0;
+
+function render(t) {
+  const { h, s, l } = eHSL(AR, VA);
+  ctx.fillStyle = `rgba(0,0,0,${0.016 + AR * 0.016})`; ctx.fillRect(0, 0, W, H);
+  const gr = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.min(W,H)*(0.28+SY*0.32));
+  gr.addColorStop(0, `hsla(${h},${s}%,${l}%,${0.018+SY*0.022})`); gr.addColorStop(1, 'transparent');
+  ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+
+  if (!isRunning) return;
+
+  ctx.save(); ctx.lineCap = 'round'; const hr = gene.hueRange;
+  for (let i = 0; i < NP2; i++) {
+    const ratio = plife[i] / pmaxL[i]; const alpha = ratio * (0.55 + SY * 0.35);
+    const pH = (h + (px[i]/W - 0.5)*hr*0.7 + (py[i]/H - 0.5)*hr*0.4 + 720) % 360;
+    ctx.strokeStyle = `hsla(${pH|0},${(s+10)|0}%,${(l+22)|0}%,${alpha.toFixed(2)})`;
+    ctx.lineWidth = psz[i] * ratio * 1.5;
+    ctx.beginPath(); ctx.moveTo(ppx[i], ppy[i]); ctx.lineTo(px[i], py[i]); ctx.stroke();
+  }
+  ctx.restore();
+
+  const resTarget = (SY > 0.76 && storyPhase >= 2) ? 1 : 0;
+  resAlpha += (resTarget - resAlpha) * 0.025;
+  document.getElementById('res-overlay').style.opacity = resAlpha * 0.85;
+
+  if (resAlpha > 0.02) {
+    resAngle += 0.0022; const sym = 6, R = Math.min(W, H) * 0.4;
+    ctx.save(); ctx.translate(W/2, H/2); ctx.globalAlpha = resAlpha * 0.2;
+    for (let i = 0; i < sym*2; i++) {
+      ctx.save(); ctx.rotate((i/(sym*2))*Math.PI*2 + resAngle);
+      const gd = ctx.createLinearGradient(0,0,0,-R); gd.addColorStop(0, `hsla(${h},${s}%,${l+12}%,0.8)`);
+      gd.addColorStop(0.5, `hsla(${(h+40)%360},${s}%,${l}%,0.3)`); gd.addColorStop(1, 'transparent');
+      ctx.fillStyle = gd; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-5,-R); ctx.lineTo(5,-R); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    for (let r=1;r<=3;r++){ ctx.globalAlpha = resAlpha*0.25; ctx.beginPath(); ctx.arc(0,0, R*r*0.28+Math.sin(t*0.009+r)*7, 0, Math.PI*2); ctx.strokeStyle = `hsla(${(h+r*35)%360},${s}%,${l+15}%,1)`; ctx.lineWidth = 0.8; ctx.stroke(); }
+    const cr = 22+Math.sin(t*0.012)*7; ctx.globalAlpha = resAlpha*0.7;
+    const cg = ctx.createRadialGradient(0,0,0,0,0,cr); cg.addColorStop(0,`hsla(${h},${s}%,${l+28}%,1)`); cg.addColorStop(1,'transparent');
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0,0,cr,0,Math.PI*2); ctx.fill(); ctx.restore();
+  }
+}
+
+// ── UI 업데이트 및 모드 관리 ───────────────
+function buildPUI() {
+  const names = ['P-01','P-02','P-03','P-04','P-05','P-06','P-07','P-08'];
+  const list  = document.getElementById('plist'); list.innerHTML = '';
+  participants.forEach((p, i) => {
+    list.innerHTML += `<div class="prow"><div class="dot" id="d${i}"></div><div class="pinfo"><div class="pname">${names[i]}</div><div class="bar-bg"><div class="bar" id="b${i}" style="width:50%"></div></div></div></div>`;
+  });
+}
+buildPUI();
+
+function updateUI() {
+  const { h: bh, s: bs, l: bl } = eHSL(AR, VA); const col = `hsl(${bh},${bs}%,${bl}%)`;
+  participants.forEach((p, i) => {
+    const { h, s, l } = eHSL(p.ar, p.va); const c2 = `hsl(${h},${s}%,${l}%)`;
+    const d = document.getElementById('d'+i), b = document.getElementById('b'+i);
+    if (d) d.style.background = c2; if (b) { b.style.width = (p.ar*100)+'%'; b.style.background = c2; }
+  });
+  const sa = (id, w, c2) => { const e = document.getElementById(id); if(!e) return; e.style.width = w+'%'; if(c2) e.style.background = c2; };
+  const st = (id, v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  sa('bar-ar', AR*100, col); sa('bar-va', (VA+1)*50, col); sa('bar-sy', SY*100, col);
+  st('val-ar', AR.toFixed(2)); st('val-va', VA.toFixed(2)); st('val-sy', SY.toFixed(2));
+  st('g-gen', generation); st('g-fit', bestFit.toFixed(3)); st('g-mut', mutRate.toFixed(2));
+  document.getElementById('foot').textContent = isRunning ? `GEN ${String(generation).padStart(4,'0')}  ·  ${mode.toUpperCase()} MODE` : 'STANDBY';
+}
+
+const modePresets = { auto: null, med: {ar:0.13, va:0.70}, anx: {ar:0.92, va:-0.78}, exc: {ar:0.82, va:0.72}, dep: {ar:0.09, va:-0.62}, res: {ar:0.26, va:0.74} };
+function snap(m) {
+  if (!isRunning) return; 
+  mode = m; storyPhase = 2; // 모드 강제 변경 시 즉시 본 궤도로 이동
+  document.querySelectorAll('.btn').forEach(b => b.classList.remove('on'));
+  const btn = document.getElementById('b-'+m); if (btn) btn.classList.add('on');
+  const preset = modePresets[m];
+  if (preset) {
+    participants.forEach(p => { p.ar = clamp(preset.ar + rndS()*0.07, 0, 1); p.va = clamp(preset.va + rndS()*0.07, -1, 1); p.tar = p.ar; p.tva = p.va; });
+    AR = preset.ar; VA = preset.va; SY = m === 'res' ? 0.95 : 0.3 + rnd()*0.25;
+  } else {
+    participants.forEach(p => { p.ar = 0.2 + rnd()*0.65; p.va = rndS()*0.9; p.tar = p.ar; p.tva = p.va; });
+    AR = 0.5; VA = 0; SY = 0.4;
+  }
+  for (let i = 0; i < 3; i++) evolveGA();
+  ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
+}
+
+// ── 메인 루프 ─────────────────────────────
+let frame = 0;
+ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+
+function loop() {
+  const t = frame++;
+  
+  if (isRunning) {
+    updateParticipants(t);
+    computeCollective();
+    if (t % 160 === 0 && storyPhase >= 2) evolveGA();
+  }
+  
+  updateParticleList(t);
+  render(t);
+  if (t % 5 === 0) updateUI();
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

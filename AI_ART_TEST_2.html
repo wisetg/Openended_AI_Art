@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>AI 양자 미술</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+  <style>
+    body { font-family: 'Malgun Gothic', sans-serif; background: #111; color: #fff; display: flex; padding: 20px; gap: 20px; }
+    #ui-panel { width: 300px; background: #222; padding: 20px; border-radius: 10px; box-sizing: border-box; }
+    .slider-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 8px; font-weight: bold; font-size: 0.95rem; color: #ddd; }
+    select, input[type=range] { width: 100%; cursor: pointer; padding: 5px; }
+    select { background: #333; color: white; border: 1px solid #555; border-radius: 5px; font-size: 1rem; margin-bottom: 15px; }
+    canvas { border-radius: 10px; box-shadow: 0 0 30px rgba(0,0,0,0.7); cursor: crosshair; }
+    h2 { margin-top: 0; font-size: 1.2rem; color: #aaa; border-bottom: 1px solid #444; padding-bottom: 10px; }
+    p.inst { font-size: 0.85rem; color: #888; line-height: 1.5; margin-bottom: 20px; }
+    
+    #manual-controls { padding: 15px; background: #2a2a2a; border-radius: 8px; margin-bottom: 20px; border: 1px solid #444; transition: opacity 0.3s; }
+    
+    /* 감정 상태 진행바 스타일 */
+    .emotion-bar-container { margin-bottom: 10px; }
+    .emotion-label { font-size: 0.8rem; display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .progress-bg { background: #444; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; transition: width 0.1s; }
+    #bar-joy { background: #ffd200; }
+    #bar-sad { background: #0078ff; }
+    #bar-ang { background: #ff1432; }
+    #bar-dep { background: #787882; }
+    
+    .divider { height: 1px; background: #444; margin: 20px 0; }
+  </style>
+</head>
+<body>
+
+  <div id="ui-panel">
+    <h2>AI 양자 미술 제어판</h2>
+    <p class="inst">수동 모드에서는 수동 조작으로 표현하고, 자동 모드에서는 감정들이 완전히 무작위로 뒤섞입니다.</p>
+    
+    <label>1. 조작 모드</label>
+    <select id="mode_select" onchange="toggleMode()">
+      <option value="manual">수동 조작</option>
+      <option value="auto">자동 감정 생성</option>
+    </select>
+
+    <div id="manual-controls">
+      <div class="slider-group">
+        <label style="color:#ffd200; font-size:0.85rem;">기쁨</label>
+        <input type="range" id="m_joy" min="0" max="1" step="0.01" value="0.5">
+      </div>
+      <div class="slider-group">
+        <label style="color:#0078ff; font-size:0.85rem;">슬픔</label>
+        <input type="range" id="m_sad" min="0" max="1" step="0.01" value="0.0">
+      </div>
+      <div class="slider-group">
+        <label style="color:#ff1432; font-size:0.85rem;">화남</label>
+        <input type="range" id="m_ang" min="0" max="1" step="0.01" value="0.0">
+      </div>
+      <div class="slider-group" style="margin-bottom:0;">
+        <label style="color:#aaa; font-size:0.85rem;">우울</label>
+        <input type="range" id="m_dep" min="0" max="1" step="0.01" value="0.0">
+      </div>
+    </div>
+
+    <div class="slider-group">
+      <label>2. 감정 변화 속도</label>
+      <input type="range" id="s_transition" min="0.001" max="0.05" step="0.001" value="0.005">
+    </div>
+
+    <div class="divider"></div>
+
+    <label>실시간 감정 상태</label>
+    <div class="emotion-bar-container">
+      <div class="emotion-label"><span>기쁨</span><span id="val-joy">0%</span></div>
+      <div class="progress-bg"><div class="progress-fill" id="bar-joy"></div></div>
+    </div>
+    <div class="emotion-bar-container">
+      <div class="emotion-label"><span>슬픔</span><span id="val-sad">0%</span></div>
+      <div class="progress-bg"><div class="progress-fill" id="bar-sad"></div></div>
+    </div>
+    <div class="emotion-bar-container">
+      <div class="emotion-label"><span>화남</span><span id="val-ang">0%</span></div>
+      <div class="progress-bg"><div class="progress-fill" id="bar-ang"></div></div>
+    </div>
+    <div class="emotion-bar-container">
+      <div class="emotion-label"><span>우울</span><span id="val-dep">0%</span></div>
+      <div class="progress-bg"><div class="progress-fill" id="bar-dep"></div></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="slider-group">
+      <label>3. 캔버스 진행 속도 (FPS)</label>
+      <input type="range" id="s_speed" min="1" max="60" step="1" value="30">
+    </div>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <script>
+    let cols, rows;
+    let resolution = 4;
+    let grid;
+
+    // 현재 감정 상태와 목표 감정 상태
+    let current = { j: 0.5, s: 0.0, a: 0.0, d: 0.0 };
+    let target = { j: 0.5, s: 0.0, a: 0.0, d: 0.0 };
+    
+    // 자동 모드용 타이머
+    let autoTimer = 0;
+    let changeInterval = 100;
+
+    function setup() {
+      let canvas = createCanvas(600, 600);
+      canvas.parent('canvas-container');
+      cols = width / resolution;
+      rows = height / resolution;
+      grid = make2DArray(cols, rows);
+      seedInitial();
+      background(0);
+    }
+
+    function draw() {
+      // 1. 캔버스 진행 속도 (FPS) 적용
+      let speed = parseInt(document.getElementById('s_speed').value);
+      frameRate(speed);
+
+      // 잔상 효과 (수묵화 느낌)
+      background(0, 30); 
+
+      // 2. 모드 확인 및 타겟 설정
+      let mode = document.getElementById('mode_select').value;
+      
+      if (mode === 'manual') {
+        // 수동 모드: 슬라이더 값이 곧 타겟
+        target.j = parseFloat(document.getElementById('m_joy').value);
+        target.s = parseFloat(document.getElementById('m_sad').value);
+        target.a = parseFloat(document.getElementById('m_ang').value);
+        target.d = parseFloat(document.getElementById('m_dep').value);
+      } else {
+        // 자동 모드: 주기적으로 타겟 재설정
+        autoTimer++;
+        if (autoTimer > changeInterval) {
+          pickRandomTarget();
+          autoTimer = 0;
+          // 타겟이 바뀌는 주기조차도 3초~8초 사이로 랜덤하게 변함
+          changeInterval = random(90, 240); 
+        }
+      }
+
+      // 3. 현재 감정을 목표 감정으로 서서히 이동 (lerp)
+      let tSpeed = parseFloat(document.getElementById('s_transition').value);
+      current.j = lerp(current.j, target.j, tSpeed);
+      current.s = lerp(current.s, target.s, tSpeed);
+      current.a = lerp(current.a, target.a, tSpeed);
+      current.d = lerp(current.d, target.d, tSpeed);
+
+      // UI 업데이트
+      updateProgressBars();
+
+      let total = current.j + current.s + current.a + current.d || 0.001;
+
+      // 4. 색상 혼합 (각 감정의 가중치 비율에 따라)
+      let cJ = color(255, 210, 0);   let cS = color(0, 120, 255);
+      let cA = color(255, 20, 50);   let cD = color(100, 100, 110);
+      
+      let r = (red(cJ)*current.j + red(cS)*current.s + red(cA)*current.a + red(cD)*current.d) / total;
+      let g = (green(cJ)*current.j + green(cS)*current.s + green(cA)*current.a + green(cD)*current.d) / total;
+      let b = (blue(cJ)*current.j + blue(cS)*current.s + blue(cA)*current.a + blue(cD)*current.d) / total;
+      fill(r, g, b);
+      noStroke();
+
+      let next = make2DArray(cols, rows);
+
+      // 5. 셀룰러 오토마타 룰 적용
+      for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+          let state = grid[i][j];
+          let neighbors = countNeighbors(grid, i, j);
+          
+          let n_Joy = rule(state, neighbors, [3], [2,3,4]);       
+          let n_Sad = rule(state, neighbors, [3], [3,4,5,6]); 
+          let n_Ang = rule(state, neighbors, [2,3], [0,1]);       
+          let n_Dep = rule(state, neighbors, [3,5,6], [3,4]);   
+
+          // 현재 프레임의 감정 가중치 기반 확률 결정
+          let rand = random(total);
+          let newState = 0;
+          if (rand < current.j) newState = n_Joy;
+          else if (rand < current.j + current.s) newState = n_Sad;
+          else if (rand < current.j + current.s + current.a) newState = n_Ang;
+          else newState = n_Dep;
+
+          // 💡 양자 요동: 죽은 공간에서 아주 희박한 확률로 피어나는 생명
+          if (newState === 0 && random(1) < 0.0004) newState = 1;
+
+          next[i][j] = newState;
+
+          if (newState === 1) {
+            rect(i * resolution, j * resolution, resolution, resolution);
+          }
+        }
+      }
+      grid = next;
+    }
+
+    // --- UI 조작 함수 ---
+    function toggleMode() {
+      let mode = document.getElementById('mode_select').value;
+      let manualDiv = document.getElementById('manual-controls');
+      if (mode === 'auto') {
+        manualDiv.style.opacity = '0.3';
+        manualDiv.style.pointerEvents = 'none'; 
+      } else {
+        manualDiv.style.opacity = '1';
+        manualDiv.style.pointerEvents = 'auto';
+        document.getElementById('m_joy').value = current.j;
+        document.getElementById('m_sad').value = current.s;
+        document.getElementById('m_ang').value = current.a;
+        document.getElementById('m_dep').value = current.d;
+      }
+    }
+
+    function updateProgressBars() {
+      document.getElementById('bar-joy').style.width = (current.j * 100) + '%';
+      document.getElementById('val-joy').innerText = Math.round(current.j * 100) + '%';
+      
+      document.getElementById('bar-sad').style.width = (current.s * 100) + '%';
+      document.getElementById('val-sad').innerText = Math.round(current.s * 100) + '%';
+      
+      document.getElementById('bar-ang').style.width = (current.a * 100) + '%';
+      document.getElementById('val-ang').innerText = Math.round(current.a * 100) + '%';
+      
+      document.getElementById('bar-dep').style.width = (current.d * 100) + '%';
+      document.getElementById('val-dep').innerText = Math.round(current.d * 100) + '%';
+    }
+
+    // 💡 자동 모드 무작위 생성 (완전 랜덤 & 중간 수치 허용)
+    function pickRandomTarget() {
+      // 0.0 ~ 0.8 사이의 값을 독립적으로 부여 (반드시 1.0을 찍을 필요 없음)
+      target.j = random(0.0, 0.8);
+      target.s = random(0.0, 0.8);
+      target.a = random(0.0, 0.8);
+      target.d = random(0.0, 0.8);
+    }
+
+    // --- 마우스 인터랙션 ---
+    function mouseDragged() { drawSeed(); }
+    function mousePressed() { drawSeed(); }
+    
+    function drawSeed() {
+      let c = floor(mouseX / resolution);
+      let r = floor(mouseY / resolution);
+      let bSize = 4;
+      for (let i = -bSize; i <= bSize; i++) {
+        for (let j = -bSize; j <= bSize; j++) {
+          if (c+i >= 0 && c+i < cols && r+j >= 0 && r+j < rows) {
+            if (i*i + j*j <= bSize*bSize && random(1) < 0.6) grid[c+i][r+j] = 1;
+          }
+        }
+      }
+    }
+
+    function seedInitial() {
+      let cx = floor(cols / 2); let cy = floor(rows / 2);
+      for(let i = -15; i <= 15; i++) {
+        for(let j = -15; j <= 15; j++) {
+          if (random(1) < 0.3) grid[cx+i][cy+j] = 1;
+        }
+      }
+    }
+
+    function rule(s, n, b, sl) {
+      if (s == 0 && b.includes(n)) return 1;
+      if (s == 1 && sl.includes(n)) return 1;
+      return 0;
+    }
+
+    function countNeighbors(g, x, y) {
+      let s = 0;
+      for (let i = -1; i < 2; i++) {
+        for (let j = -1; j < 2; j++) {
+          let c = (x + i + cols) % cols;
+          let r = (y + j + rows) % rows;
+          s += g[c][r];
+        }
+      }
+      return s - g[x][y];
+    }
+
+    function make2DArray(c, r) {
+      let arr = new Array(c);
+      for (let i = 0; i < c; i++) arr[i] = new Array(r).fill(0);
+      return arr;
+    }
+  </script>
+</body>
+</html>
